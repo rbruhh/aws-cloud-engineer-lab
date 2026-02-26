@@ -156,6 +156,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
   key_name                    = aws_key_pair.cloudlab.key_name
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_ssm_profile.name
 
   tags = {
     Name = "cloudlab-bastion"
@@ -171,6 +172,7 @@ resource "aws_instance" "private_app" {
   subnet_id              = aws_subnet.private_1.id
   vpc_security_group_ids = [aws_security_group.private_sg.id]
   key_name               = aws_key_pair.cloudlab.key_name
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
 
   tags = {
     Name = "cloudlab-private-app"
@@ -209,4 +211,144 @@ resource "aws_vpc_endpoint" "s3" {
   tags = {
     Name = "cloudlab-s3-endpoint"
   }
+}
+# -------------------------
+# CloudWatch Log Group for VPC Flow Logs
+# -------------------------
+resource "aws_cloudwatch_log_group" "vpc_flow_logs" {
+  name              = "/cloudlab/vpc-flow-logs"
+  retention_in_days = 7
+
+  tags = {
+    Name = "cloudlab-vpc-flow-logs"
+  }
+}
+# -------------------------
+# IAM Role for VPC Flow Logs
+# -------------------------
+resource "aws_iam_role" "flow_logs_role" {
+  name = "cloudlab-flow-logs-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "vpc-flow-logs.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "flow_logs_policy" {
+  name = "cloudlab-flow-logs-policy"
+  role = aws_iam_role.flow_logs_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+# -------------------------
+# IAM Role for EC2 (SSM)
+# -------------------------
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "cloudlab-ec2-ssm-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+# Attach the AWS-managed policy for SSM
+resource "aws_iam_role_policy_attachment" "ec2_ssm_attach" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ec2_ssm_profile" {
+  name = "cloudlab-ec2-ssm-profile"
+  role = aws_iam_role.ec2_ssm_role.name
+}
+# -------------------------
+# VPC Flow Logs
+# -------------------------
+resource "aws_flow_log" "vpc_flow_logs" {
+  iam_role_arn    = aws_iam_role.flow_logs_role.arn
+  log_destination = aws_cloudwatch_log_group.vpc_flow_logs.arn
+  traffic_type    = "ALL"
+  vpc_id          = aws_vpc.main.id
+}
+# -------------------------
+# Security Group for VPC Interface Endpoints (SSM)
+# -------------------------
+resource "aws_security_group" "ssm_endpoints_sg" {
+  name        = "cloudlab-ssm-endpoints-sg"
+  description = "Allow HTTPS to VPC interface endpoints from within VPC"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTPS from VPC"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+# -------------------------
+# VPC Interface Endpoints for SSM (private subnets)
+# -------------------------
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.us-east-1.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  security_group_ids  = [aws_security_group.ssm_endpoints_sg.id]
+  private_dns_enabled = true
+
+  tags = { Name = "cloudlab-ssm-endpoint" }
+}
+
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.us-east-1.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  security_group_ids  = [aws_security_group.ssm_endpoints_sg.id]
+  private_dns_enabled = true
+
+  tags = { Name = "cloudlab-ssmmessages-endpoint" }
+}
+
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.us-east-1.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  security_group_ids  = [aws_security_group.ssm_endpoints_sg.id]
+  private_dns_enabled = true
+
+  tags = { Name = "cloudlab-ec2messages-endpoint" }
 }
