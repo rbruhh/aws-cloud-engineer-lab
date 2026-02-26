@@ -95,3 +95,84 @@ resource "aws_route_table_association" "public_2_assoc" {
   subnet_id      = aws_subnet.public_2.id
   route_table_id = aws_route_table.public_rt.id
 }
+# -------------------------
+# SSH Key Pair
+# -------------------------
+resource "aws_key_pair" "cloudlab" {
+  key_name   = "cloudlab-key"
+  public_key = file("C:/Users/rlbra/.ssh/cloudlab.pub")
+}
+# -------------------------
+# Security Groups
+# -------------------------
+resource "aws_security_group" "bastion_sg" {
+  name        = "cloudlab-bastion-sg"
+  description = "Allow SSH from my public IP"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "SSH from my IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["104.5.217.1/32"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "private_sg" {
+  name        = "cloudlab-private-sg"
+  description = "Allow SSH only from bastion"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "SSH from bastion SG"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+# -------------------------
+# Bastion Host (Public)
+# -------------------------
+resource "aws_instance" "bastion" {
+  ami                         = "ami-0f3caa1cf4417e51b"
+  instance_type               = "t3.micro"
+  subnet_id                   = aws_subnet.public_1.id
+  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
+  key_name                    = aws_key_pair.cloudlab.key_name
+  associate_public_ip_address = true
+
+  tags = {
+    Name = "cloudlab-bastion"
+  }
+}
+
+# -------------------------
+# Private App Instance
+# -------------------------
+resource "aws_instance" "private_app" {
+  ami                    = "ami-0f3caa1cf4417e51b"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_1.id
+  vpc_security_group_ids = [aws_security_group.private_sg.id]
+  key_name               = aws_key_pair.cloudlab.key_name
+
+  tags = {
+    Name = "cloudlab-private-app"
+  }
+}
