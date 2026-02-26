@@ -176,3 +176,37 @@ resource "aws_instance" "private_app" {
     Name = "cloudlab-private-app"
   }
 }
+# -------------------------
+# Private Route Table
+# -------------------------
+resource "aws_route_table" "private_rt" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "cloudlab-private-rt"
+  }
+}
+
+resource "aws_route_table_association" "private_1_assoc" {
+  subnet_id      = aws_subnet.private_1.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+resource "aws_route_table_association" "private_2_assoc" {
+  subnet_id      = aws_subnet.private_2.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+# -------------------------
+# VPC Endpoint (S3) - FREE
+# -------------------------
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.us-east-1.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private_rt.id]
+
+  tags = {
+    Name = "cloudlab-s3-endpoint"
+  }
+}
