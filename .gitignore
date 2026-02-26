@@ -15,3 +15,8 @@ terraform.exe
 # OS
 Thumbs.db
 .DS_Store
+
+# Local notes / extras
+terraform/LICENSE.txt
+terraform/terraform aws subnets.txt
+git
