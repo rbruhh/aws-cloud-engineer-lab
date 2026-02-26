@@ -320,7 +320,7 @@ resource "aws_security_group" "ssm_endpoints_sg" {
 # -------------------------
 # VPC Interface Endpoints for SSM (private subnets)
 # -------------------------
-resource "aws_vpc_endpoint" "ssm" {
+# resource "aws_vpc_endpoint" "ssm" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.us-east-1.ssm"
   vpc_endpoint_type   = "Interface"
@@ -331,7 +331,7 @@ resource "aws_vpc_endpoint" "ssm" {
   tags = { Name = "cloudlab-ssm-endpoint" }
 }
 
-resource "aws_vpc_endpoint" "ssmmessages" {
+# resource "aws_vpc_endpoint" "ssmmessages" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.us-east-1.ssmmessages"
   vpc_endpoint_type   = "Interface"
@@ -342,7 +342,7 @@ resource "aws_vpc_endpoint" "ssmmessages" {
   tags = { Name = "cloudlab-ssmmessages-endpoint" }
 }
 
-resource "aws_vpc_endpoint" "ec2messages" {
+# resource "aws_vpc_endpoint" "ec2messages" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.us-east-1.ec2messages"
   vpc_endpoint_type   = "Interface"
