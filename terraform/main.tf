@@ -96,6 +96,23 @@ resource "aws_route_table_association" "public_2_assoc" {
   route_table_id = aws_route_table.public_rt.id
 }
 # -------------------------
+# Latest Amazon Linux 2023 AMI (x86_64)
+# -------------------------
+data "aws_ami" "al2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+# -------------------------
 # SSH Key Pair
 # -------------------------
 resource "aws_key_pair" "cloudlab" {
@@ -172,21 +189,6 @@ resource "aws_instance" "bastion" {
 }
 
 # -------------------------
-# Private App Instance
-# -------------------------
-resource "aws_instance" "private_app" {
-  ami                    = "ami-0f3caa1cf4417e51b"
-  instance_type          = "t3.micro"
-  subnet_id              = aws_subnet.private_1.id
-  vpc_security_group_ids = [aws_security_group.private_sg.id]
-  key_name               = aws_key_pair.cloudlab.key_name
-  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
-
-  tags = {
-    Name = "cloudlab-private-app"
-  }
-}
-# -------------------------
 # Private Route Table
 # -------------------------
 resource "aws_route_table" "private_rt" {
@@ -243,11 +245,6 @@ resource "aws_lb_target_group" "app_tg" {
   tags = { Name = "cloudlab-app-tg" }
 }
 
-resource "aws_lb_target_group_attachment" "private_app_attach" {
-  target_group_arn = aws_lb_target_group.app_tg.arn
-  target_id        = aws_instance.private_app.id
-  port             = 80
-}
 # -------------------------
 # CloudWatch Log Group for VPC Flow Logs
 # -------------------------
@@ -399,5 +396,54 @@ resource "aws_lb_listener" "http" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+}
+# -------------------------
+# Launch Template for App
+# -------------------------
+resource "aws_launch_template" "app_lt" {
+  name_prefix   = "cloudlab-app-lt-"
+  image_id      = data.aws_ami.al2023.id
+  instance_type = "t3.micro"
+
+  vpc_security_group_ids = [aws_security_group.private_sg.id]
+
+  user_data = base64encode(<<-EOF
+              #!/bin/bash
+              dnf -y update
+              dnf -y install nginx
+              systemctl enable nginx
+              systemctl start nginx
+              EOF
+  )
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "cloudlab-asg-instance"
+    }
+  }
+}
+# -------------------------
+# Auto Scaling Group
+# -------------------------
+resource "aws_autoscaling_group" "app_asg" {
+  name                = "cloudlab-app-asg"
+  desired_capacity    = 2
+  max_size            = 2
+  min_size            = 2
+  vpc_zone_identifier = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+
+  launch_template {
+    id      = aws_launch_template.app_lt.id
+    version = "$Latest"
+  }
+
+  target_group_arns = [aws_lb_target_group.app_tg.arn]
+
+  tag {
+    key                 = "Name"
+    value               = "cloudlab-asg-instance"
+    propagate_at_launch = true
   }
 }
