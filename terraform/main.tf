@@ -175,7 +175,7 @@ resource "aws_security_group" "private_sg" {
 # Bastion Host (Public)
 # -------------------------
 resource "aws_instance" "bastion" {
-  ami                         = "ami-0f3caa1cf4417e51b"
+  ami                         = data.aws_ami.al2023.id
   instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public_1.id
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
@@ -328,29 +328,6 @@ resource "aws_flow_log" "vpc_flow_logs" {
   vpc_id          = aws_vpc.main.id
 }
 # -------------------------
-# Security Group for VPC Interface Endpoints (SSM)
-# -------------------------
-resource "aws_security_group" "ssm_endpoints_sg" {
-  name        = "cloudlab-ssm-endpoints-sg"
-  description = "Allow HTTPS to VPC interface endpoints from within VPC"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "HTTPS from VPC"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-# -------------------------
 # Security Group: ALB (public HTTP)
 # -------------------------
 resource "aws_security_group" "alb_sg" {
@@ -407,6 +384,7 @@ resource "aws_launch_template" "app_lt" {
   instance_type = "t3.micro"
 
   vpc_security_group_ids = [aws_security_group.private_sg.id]
+  key_name               = aws_key_pair.cloudlab.key_name
 
   user_data = base64encode(<<-EOF
               #!/bin/bash
