@@ -139,6 +139,14 @@ resource "aws_security_group" "private_sg" {
     security_groups = [aws_security_group.bastion_sg.id]
   }
 
+  ingress {
+    description     = "HTTP from ALB"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -211,6 +219,34 @@ resource "aws_vpc_endpoint" "s3" {
   tags = {
     Name = "cloudlab-s3-endpoint"
   }
+}
+# -------------------------
+# Target Group for private app
+# -------------------------
+resource "aws_lb_target_group" "app_tg" {
+  name        = "cloudlab-app-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "instance"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200-399"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+
+  tags = { Name = "cloudlab-app-tg" }
+}
+
+resource "aws_lb_target_group_attachment" "private_app_attach" {
+  target_group_arn = aws_lb_target_group.app_tg.arn
+  target_id        = aws_instance.private_app.id
+  port             = 80
 }
 # -------------------------
 # CloudWatch Log Group for VPC Flow Logs
@@ -315,5 +351,53 @@ resource "aws_security_group" "ssm_endpoints_sg" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+# -------------------------
+# Security Group: ALB (public HTTP)
+# -------------------------
+resource "aws_security_group" "alb_sg" {
+  name        = "cloudlab-alb-sg"
+  description = "Public HTTP to ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "HTTP from Internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "All egress"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "cloudlab-alb-sg" }
+}
+# -------------------------
+# Application Load Balancer (public)
+# -------------------------
+resource "aws_lb" "app_alb" {
+  name               = "cloudlab-app-alb"
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
+
+  tags = { Name = "cloudlab-app-alb" }
+}
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
   }
 }

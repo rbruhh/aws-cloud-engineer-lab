@@ -15,3 +15,6 @@ output "private_subnet_ids" {
     aws_subnet.private_2.id
   ]
 }
+output "alb_dns_name" {
+  value = aws_lb.app_alb.dns_name
+}
