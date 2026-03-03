@@ -7,7 +7,6 @@ resource "aws_instance" "bastion" {
   instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public_1.id
   vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
-  key_name                    = aws_key_pair.cloudlab.key_name
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_ssm_profile.name
 
@@ -24,19 +23,18 @@ resource "aws_launch_template" "app_lt" {
   instance_type = "t3.micro"
 
   vpc_security_group_ids = [aws_security_group.private_sg.id]
-  key_name               = aws_key_pair.cloudlab.key_name
 
   iam_instance_profile {
     name = aws_iam_instance_profile.ec2_ssm_profile.name
   }
 
   user_data = base64encode(<<-EOF
-              #!/bin/bash
-              dnf -y update
-              dnf -y install nginx
-              systemctl enable nginx
-              systemctl start nginx
-              EOF
+#!/bin/bash
+dnf -y update
+dnf -y install nginx
+systemctl enable --now nginx
+systemctl enable --now amazon-ssm-agent
+EOF
   )
 
   tag_specifications {
